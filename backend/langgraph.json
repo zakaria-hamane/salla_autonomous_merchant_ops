@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "salla_ops": "./graph.py:app"
+  },
+  "env": ".env"
+}

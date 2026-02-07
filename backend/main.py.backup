@@ -1,0 +1,138 @@
+"""
+FastAPI application serving the LangGraph multi-agent system.
+"""
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
+import os
+from dotenv import load_dotenv
+
+from graph import app as langgraph_app
+from state import AgentState
+from llm_config import get_provider_info
+
+load_dotenv()
+
+app = FastAPI(
+    title="Salla Autonomous Merchant Operations",
+    description="Multi-agent system for merchant operations management",
+    version="1.0.0"
+)
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class RunRequest(BaseModel):
+    merchant_id: Optional[str] = "merchant_001"
+    force_reload: Optional[bool] = False
+
+
+class RunResponse(BaseModel):
+    status: str
+    report: dict
+    merchant_id: str
+
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Salla Autonomous Merchant Operations API",
+        "version": "1.0.0",
+        "endpoints": {
+            "health": "/health",
+            "run": "/api/run",
+            "status": "/api/status"
+        }
+    }
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "salla-ops-backend"}
+
+
+@app.post("/api/run", response_model=RunResponse)
+async def run_operations(request: RunRequest):
+    """
+    Trigger the Coordinator Agent to run the daily operations check.
+    """
+    try:
+        print(f"\n{'='*70}")
+        print(f"API /api/run called with merchant_id: {request.merchant_id}")
+        print(f"{'='*70}")
+        
+        # Load sample data
+        from data_loader import load_sample_data
+        
+        print("Loading sample data...")
+        product_data, customer_messages, pricing_context = load_sample_data()
+        print(f"✓ Loaded {len(product_data)} products")
+        print(f"✓ Loaded {len(customer_messages)} customer messages")
+        print(f"✓ Loaded {len(pricing_context)} pricing contexts")
+        
+        # Prepare initial state
+        initial_state = {
+            "merchant_id": request.merchant_id,
+            "product_data": product_data[:10],  # Limit for demo
+            "customer_messages": customer_messages[:20],
+            "pricing_context": pricing_context[:5],
+            "competitor_data": [],
+            "pricing_proposals": [],
+            "catalog_issues": [],
+            "support_summary": {},
+            "sentiment_score": 0.0,
+            "complaint_spike_detected": False,
+            "schema_validation_passed": True,
+            "throttle_mode_active": False,
+            "final_report": {}
+        }
+        
+        print("Invoking LangGraph workflow...")
+        # Run the LangGraph application
+        result = langgraph_app.invoke(initial_state)
+        
+        print("✓ Workflow completed successfully")
+        return RunResponse(
+            status="success",
+            report=result.get("final_report", {}),
+            merchant_id=request.merchant_id
+        )
+        
+    except Exception as e:
+        print(f"\n{'='*70}")
+        print(f"ERROR in /api/run:")
+        print(f"Error type: {type(e).__name__}")
+        print(f"Error message: {str(e)}")
+        print(f"{'='*70}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/status")
+async def get_status():
+    """
+    Get current system status and configuration.
+    """
+    llm_info = get_provider_info()
+    
+    return {
+        "langsmith_enabled": os.getenv("LANGCHAIN_TRACING_V2") == "true",
+        "langsmith_project": os.getenv("LANGCHAIN_PROJECT"),
+        "llm_provider": llm_info["provider"],
+        "llm_configured": llm_info["configured"],
+        "llm_details": llm_info
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
