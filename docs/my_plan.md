@@ -19,7 +19,7 @@
 | ✅ | **2. Schema Design** | **Product Normalization** | • **Logic:** Extraction of `id`, `name`, `price`, `cost` from text.<br>• **Validation:** Checks for missing critical fields. | "Product normalization schema... Unit mismatches" |
 | ✅ | | **Message Ontology** | • **Classification:** `Inquiry`, `Complaint`, `Suggestion`, `Transactional`. | "Customer-message classification ontology... define rules" |
 | ✅ | | **Pricing Constraints** | • **Hard Rule 1:** `price >= cost * 1.05`.<br>• **Hard Rule 2:** Block increase if `sentiment < 0`. | "Deterministic rules... Cannot reduce prices below cost" |
-| ❌ | | **Validation Pipelines** | • **Hallucination Checks:** Logic to catch ungrounded claims (e.g., phantom competitor data).<br>• **Contradiction Detection:** Explicit check for cross-agent disagreements. | "Validation pipelines... Explain how system catches hallucinations... ungrounded claims" |
+| ✅ | | **Validation Pipelines** | • **Hallucination Checks:** Logic to catch ungrounded claims (e.g., phantom competitor data).<br>• **Contradiction Detection:** Explicit check for cross-agent disagreements.<br>• **Implementation:** `validator_node` in `nodes.py` performs regex-based extraction and cross-validation.<br>• **Testing:** Dedicated test suite in `backend/tests/test_validation_pipeline.py`. | "Validation pipelines... Explain how system catches hallucinations... ungrounded claims" |
 | ✅ | **3. Implementation** | **Coordinator Logic** | • **Orchestration:** `coordinator_node` loads data.<br>• **Resolution:** `conflict_resolver_node` aggregates outputs. | "Responsible for calling all other agents... Aggregates outputs" |
 | ✅ | | **Working Agents** | • **Codebase:** Implemented `catalog`, `support`, `pricing` agents.<br>• **Data Loading:** `data_loader.py` parsing. | "Skeleton/prototype for at least one other agent" |
 | ✅ | | **Conflict Resolution** | • **Logic:** Resolver overrides Pricing if Catalog has critical errors. | "Conflict resolution example... Coordinator overrides" |
@@ -64,115 +64,137 @@ flowchart TD
     classDef workerNode fill:#fff8e1,stroke:#ff9800,stroke-width:2px,color:#e65100,font-size:14px,rx:5,ry:5;
     classDef ruleNode fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#b71c1c,font-size:12px,rx:5,ry:5,stroke-dasharray: 5 5;
     classDef stateNode fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px,stroke-dasharray: 5 5,color:#4a148c,shape:cyl;
-    classDef dataNode fill:#eceff1,stroke:#607d8b,stroke-width:1px,stroke-dasharray: 2 2,color:#455a64,font-size:12px,shape:note;
-    classDef reportNode fill:#e8f5e9,stroke:#4caf50,stroke-width:2px,color:#1b5e20,font-weight:bold,rx:10,ry:10;
     classDef failSafeNode fill:#cfd8dc,stroke:#455a64,stroke-width:2px,color:#000,font-weight:bold,shape:hexagon;
     classDef observeNode fill:#263238,stroke:#000,stroke-width:2px,color:#fff,font-size:12px,rx:5,ry:5;
     classDef gateNode fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:#000,shape:diamond,font-size:12px;
+    classDef priorityNode fill:#004d40,stroke:#00695c,stroke-width:1px,color:#fff,font-size:11px,shape:rect,rx:2,ry:2;
 
     %% --- EXTERNAL LAYER ---
-    User((Merchant)):::userNode
+    User(("Merchant")):::userNode
 
     subgraph Frontend ["🖥️ UI Layer (Next.js + CopilotKit)"]
         style Frontend fill:#fcfcfc,stroke:#b0bec5,stroke-width:1px
-        Copilot[⚡ Chat UI & Dashboard<br/><i>Trigger, View Report, Set Locks</i>]:::uiNode
+        Copilot["⚡ Chat UI & Dashboard<br/><i>CopilotPopup Provider</i>"]:::uiNode
     end
 
     subgraph System ["☁️ Backend (LangGraph Server)"]
         style System fill:#fcfcfc,stroke:#b0bec5,stroke-width:2px,rx:20,ry:20
 
-        API[⚡ LangGraph API Endpoint<br/><i>POST /runs/stream</i>]:::apiNode
-        Smith[️🐞 LangSmith<br/><i>Tracing & Observability</i>]:::observeNode
+        API["⚡ LangGraph API Endpoint<br/><i>/runs/stream (SSE)</i>"]:::apiNode
+        Smith["️🐞 LangSmith<br/><i>Tracing: LANGCHAIN_TRACING_V2</i>"]:::observeNode
 
-        %% --- STATE MANAGEMENT (LANGGRAPH) ---
-        subgraph StateStore ["🗄️ Shared Graph State"]
+        %% --- STATE MANAGEMENT ---
+        subgraph StateStore ["🗄️ Shared Graph State (state.py)"]
             style StateStore fill:#f3e5f5,stroke:#8e24aa,stroke-dasharray: 5 5
-            StateData[("Context Object<br/>(Norm. Attributes, Analysis, Prices)")]:::stateNode
-            Overrides[("🔐 Merchant Locks<br/>(Immutable Overrides)")]:::stateNode
-            AuditLog[("📝 Audit Log<br/>(Immutable Actions)")]:::stateNode
+            StateData[("AgentState<br/>(Context, Retry Count)")]:::stateNode
+            Overrides[("🔐 Merchant Locks<br/>(Priority 1)")]:::stateNode
         end
 
-        %% --- ORCHESTRATION & LOGIC ---
-        subgraph LogicFlow ["🧠 Orchestration & Logic Pipeline"]
+        %% --- ORCHESTRATION ---
+        subgraph LogicFlow ["🧠 Orchestration Pipeline"]
             style LogicFlow fill:#ede7f6,stroke:#673ab7,stroke-width:1px
 
-            Coord[Coordinator Agent<br/><i>Router & Orchestrator</i>]:::brainNode
+            DataLoader[("📥 Data Loader<br/>(CSV Parsing)")]:::workerNode
+            Coord["Coordinator Agent<br/><i>Orchestrator</i>"]:::brainNode
             
             %% Step 1: Parallel Workers
-            subgraph Workers ["Step 1: Analysis"]
+            subgraph Workers ["Step 1: Analysis & Extraction"]
                 style Workers fill:#fff3e0,stroke:#ffe0b2,stroke-width:0px
-                Cat["📦 Catalog Agent<br/><i>Normalize & Validate</i>"]:::workerNode
-                Supp["🎧 Support Agent<br/><i>Sentiment & Spike Detection</i>"]:::workerNode
+                Cat["📦 Catalog Agent<br/><i>Normalization</i>"]:::workerNode
+                Supp["🎧 Support Agent<br/><i>Classification</i>"]:::workerNode
             end
 
-            %% Safety Gating Layer
-            subgraph Gating ["🛡️ Safety Gates"]
+            %% Safety Gating Layer & Loop Prevention
+            subgraph Gating ["🛡️ Gates & Loop Prevention"]
                 style Gating fill:#e0f7fa,stroke:#00acc1,stroke-width:1px
-                SpikeCheck{{"🔥 Anomaly Spike?"}}:::gateNode
-                Throttler["❄️ THROTTLER<br/>(Freeze Operations)"]:::failSafeNode
+                SpikeCheck{{"🔥 Viral Spike?"}}:::gateNode
+                Throttler["❄️ THROTTLER<br/>(Return FROZEN)"]:::failSafeNode
                 SchemaCheck{{"🛡️ Schema Valid?"}}:::gateNode
+                RetryCheck{{"🔄 Max Retries<br/>Exceeded?"}}:::gateNode
             end
 
-            %% Step 2: Pricing with Constraints
+            %% Step 2: Pricing
             subgraph PricingLogic ["Step 2: Pricing Strategy"]
                 style PricingLogic fill:#fff3e0,stroke:#ffe0b2,stroke-width:0px
-                Price["💰 Pricing Agent<br/><i>Rules-Based Proposals</i>"]:::workerNode
-                NegSent{{"❌ Block if<br/>Sentiment < 0"}}:::ruleNode
-                CostFloor{{"❌ Floor Limit<br/>Product Cost"}}:::ruleNode
+                Price["💰 Pricing Agent<br/><i>Apply Rules</i>"]:::workerNode
+                NegSent{{"Hard Rule:<br/>Sentiment < 0"}}:::ruleNode
+                CostFloor{{"Hard Rule:<br/>Price > Cost"}}:::ruleNode
             end
 
-            %% Step 3: Resolution
-            subgraph Resolution ["Step 3: Verification & Resolution"]
+            %% Step 3: Validation
+            subgraph Validation ["Step 3: Validation Pipeline"]
+                style Validation fill:#fff3e0,stroke:#ff6f00,stroke-width:1px
+                Validator["️ Validator Node<br/><i>Hallucination Check</i>"]:::workerNode
+                ContradictionCheck{{"⚠️ Conflict<br/>Detected?"}}:::gateNode
+            end
+
+            %% Step 4: Resolution
+            subgraph Resolution ["Step 4: Conflict Resolution"]
                 style Resolution fill:#e0f2f1,stroke:#00897b,stroke-width:0px
-                CrossCheck["🔄 Cross-Agent Check"]:::ruleNode
-                Resolver[⚖️ Conflict Resolver<br/><i>Finalize & Report</i>]:::brainNode
+                Resolver["⚖️ Conflict Resolver<br/><i>Final Output Generation</i>"]:::brainNode
+                
+                %% Visualizing the Priority Hierarchy from Checklist
+                Prio1["1. Locks"]:::priorityNode
+                Prio2["2. Catalog"]:::priorityNode
+                Prio3["3. Sent."]:::priorityNode
+                Prio4["4. Cost"]:::priorityNode
+                
+                Prio1 --- Prio2 --- Prio3 --- Prio4
             end
         end
 
         %% --- OUTPUTS ---
-        subgraph Outputs ["Deliverables"]
-            style Outputs fill:#fff,stroke-width:0px
-            Report[📜 Final Daily Report]:::reportNode
-        end
+        Report["📜 Final Daily Report"]:::uiNode
 
     end
 
     %% --- CONNECTIONS ---
 
-    %% User Flow (SSE)
-    User <== "1. Trigger" ==> Copilot
-    Copilot <== "2. Server-Sent Events (SSE)" ==> API
-    API ==>|Start Graph| Coord
+    %% User Flow
+    User <==> Copilot
+    Copilot <==> API
+    API ==>|Start| DataLoader
+    DataLoader --> Coord
 
-    %% Step 1: Analysis
-    Coord -->|Dispatch| Workers
-    Cat & Supp -->|Update State| StateData
+    %% Dispatch
+    Coord -->|Parallel Exec| Cat & Supp
+    Cat & Supp -->|Update| StateData
 
-    %% Flow through Safety Gates
-    Workers --> SpikeCheck
-    Workers --> SchemaCheck
+    %% Gating & Loop Logic
+    Supp --> SpikeCheck
+    Cat --> SchemaCheck
 
-    %% Logic: Viral Spike Handling
-    SpikeCheck -- "YES (Spike!)" --> Throttler
-    Throttler -->|Bypass Pricing| Resolver
-    SpikeCheck -- "NO" --> PricingLogic
+    %% Viral Spike Path
+    SpikeCheck -- "YES" --> Throttler
+    Throttler -->|Skip Pricing| Resolver
 
-    %% Logic: Catalog Integrity Check
-    SchemaCheck -- "INVALID" --> Coord
+    %% Schema/Retry Logic
     SchemaCheck -- "VALID" --> PricingLogic
+    SchemaCheck -- "INVALID" --> RetryCheck
+    
+    %% FIXED SYNTAX HERE:
+    RetryCheck -- "RETRY < MAX (Increment)" --> Coord
+    RetryCheck -- "MAX REACHED (Fail)" --> Resolver
 
-    %% Step 2: Pricing
-    StateData -->|Read Normalized Data| Price
-    Supp -.->|Sentiment Signal| NegSent
+    %% Pricing Logic
+    SpikeCheck -- "NO" --> PricingLogic
+    StateData --> Price
+    Supp -.-> NegSent
     NegSent & CostFloor -.-> Price
-    Price -->|Proposal| CrossCheck
 
-    %% Step 3: Resolution
-    CrossCheck --> Resolver
-    Overrides -.->|Enforce Locks| Resolver
-    Resolver -->|Finalize| Report
+    %% Validation Pipeline
+    Price --> Validator
+    Validator --> ContradictionCheck
+    ContradictionCheck -- "No Issues" --> Resolver
+    %% FIXED SYNTAX HERE:
+    ContradictionCheck -- "Conflict (Flagged)" --> Resolver
 
-    %% Observability & Reporting
-    Report ==>|Stream JSON| API
-    Coord & Workers & Resolver -.->|Trace| Smith
+    %% Resolution & Priorities
+    Prio4 -.- Resolver
+    Overrides -.->|Enforce| Resolver
+    Resolver --> Report
+    Report ==>|JSON Stream| API
+
+    %% Observability
+    Coord & Resolver & Validator -.->|Trace| Smith
 ```

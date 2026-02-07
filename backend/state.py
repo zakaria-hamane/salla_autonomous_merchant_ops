@@ -31,6 +31,9 @@ class AgentState(TypedDict):
     # Pricing Agent Outputs
     pricing_proposals: Annotated[List[Dict], operator.add]
     
+    # Validation Flags (Hallucination & Contradiction Detection)
+    validation_flags: Annotated[List[Dict], operator.add]
+    
     # System Flags & Safety
     schema_validation_passed: bool
     throttle_mode_active: bool
