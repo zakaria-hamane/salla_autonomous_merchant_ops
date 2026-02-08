@@ -15,6 +15,19 @@ interface Report {
   pricing_actions?: any[]
   warnings?: string[]
   recommendations?: string[]
+  metrics?: {
+    pricing_pass_rate?: number
+    automated_block_rate?: number
+    hallucination_rate?: number
+    sentiment_score?: number
+  }
+  validation_flags?: any[]
+  audit_log?: any[]
+  merchant_locks?: any
+  schema_validation_passed?: boolean
+  retry_count?: number
+  throttle_mode_active?: boolean
+  normalized_catalog?: any[]
 }
 
 export default function Dashboard() {
@@ -409,6 +422,112 @@ export default function Dashboard() {
       yPos += 25
     }
 
+    // Reliability Metrics Section
+    if (report.metrics) {
+      if (yPos > 240) {
+        doc.addPage()
+        yPos = 20
+      }
+      
+      yPos = drawSectionHeader('RELIABILITY METRICS', yPos)
+      
+      const metricsData = [
+        { 
+          label: 'Pass Rate', 
+          value: `${report.metrics.pricing_pass_rate?.toFixed(1) || '0.0'}%`,
+          target: '>= 80%',
+          status: (report.metrics.pricing_pass_rate || 0) >= 80 ? 'good' : 'warning'
+        },
+        { 
+          label: 'Block Rate', 
+          value: `${report.metrics.automated_block_rate?.toFixed(1) || '0.0'}%`,
+          target: '<= 10%',
+          status: (report.metrics.automated_block_rate || 0) <= 10 ? 'good' : 'warning'
+        },
+        { 
+          label: 'Hallucinations', 
+          value: `${report.metrics.hallucination_rate?.toFixed(1) || '0.0'}%`,
+          target: '0%',
+          status: (report.metrics.hallucination_rate || 0) === 0 ? 'good' : 'critical'
+        },
+        { 
+          label: 'Sentiment', 
+          value: report.metrics.sentiment_score?.toFixed(2) || '0.00',
+          target: '>= 0.0',
+          status: (report.metrics.sentiment_score || 0) >= 0 ? 'good' : 'critical'
+        }
+      ]
+
+      const boxWidth = (pageWidth - 2 * margin - 9) / 4
+      metricsData.forEach((item, idx) => {
+        const xPos = margin + idx * (boxWidth + 3)
+        const bgColor = item.status === 'good' ? '#d1fae5' : item.status === 'warning' ? '#fef3c7' : '#fee2e2'
+        const borderColor = item.status === 'good' ? '#10b981' : item.status === 'warning' ? '#f59e0b' : '#ef4444'
+        
+        drawBox(xPos, yPos, boxWidth, 20, bgColor, borderColor)
+        doc.setFontSize(7)
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(75, 85, 99)
+        doc.text(item.label, xPos + boxWidth / 2, yPos + 4, { align: 'center' })
+        doc.setFontSize(14)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(31, 41, 55)
+        doc.text(item.value, xPos + boxWidth / 2, yPos + 11, { align: 'center' })
+        doc.setFontSize(6)
+        doc.setFont('helvetica', 'italic')
+        doc.setTextColor(107, 114, 128)
+        doc.text(`Target: ${item.target}`, xPos + boxWidth / 2, yPos + 16, { align: 'center' })
+      })
+      yPos += 26
+    }
+
+    // Validation Flags Section (Hallucination Detection)
+    if (report.validation_flags && report.validation_flags.length > 0) {
+      if (yPos > 220) {
+        doc.addPage()
+        yPos = 20
+      }
+
+      yPos = drawSectionHeader('VALIDATION FLAGS (HALLUCINATION DETECTION)', yPos)
+
+      doc.setFontSize(8)
+      report.validation_flags.forEach((flag: any) => {
+        if (yPos > 260) {
+          doc.addPage()
+          yPos = 20
+        }
+
+        const flagType = (flag.type || 'VALIDATION').toUpperCase()
+        const severity = (flag.severity || 'HIGH').toLowerCase()
+        let bgColor = '#fee2e2'
+        let borderColor = '#ef4444'
+        
+        if (severity === 'medium') {
+          bgColor = '#fef3c7'
+          borderColor = '#f59e0b'
+        }
+
+        const boxHeight = 14
+        drawBox(margin, yPos, pageWidth - 2 * margin, boxHeight, bgColor, borderColor)
+
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(0, 0, 0)
+        doc.text(`[${flagType}]`, margin + 2, yPos + 4)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7)
+        doc.setTextColor(75, 85, 99)
+        doc.text(`ID: ${sanitizeText(flag.product_id || 'N/A')}`, margin + 35, yPos + 4)
+        doc.text(`Severity: ${severity.toUpperCase()}`, margin + 70, yPos + 4)
+
+        doc.setFontSize(8)
+        doc.setTextColor(31, 41, 55)
+        const message = doc.splitTextToSize(sanitizeText(flag.message || ''), pageWidth - 2 * margin - 6)
+        doc.text(message, margin + 2, yPos + 9)
+
+        yPos += boxHeight + 2
+      })
+    }
+
     // Customer Support Analysis
     if (report.support_summary && Object.keys(report.support_summary).length > 0) {
       if (yPos > 240) {
@@ -631,6 +750,96 @@ export default function Dashboard() {
       })
     }
 
+    // Merchant Locks
+    if (report.merchant_locks && Object.keys(report.merchant_locks).length > 0) {
+      if (yPos > 220) {
+        doc.addPage()
+        yPos = 20
+      }
+
+      yPos = drawSectionHeader('LOCKED PRODUCTS (MERCHANT OVERRIDES)', yPos)
+
+      // Table header
+      drawBox(margin, yPos, pageWidth - 2 * margin, 8, '#f9fafb', '#e5e7eb')
+      doc.setFontSize(8)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(55, 65, 81)
+      doc.text('Product ID', margin + 2, yPos + 5)
+      doc.text('Reason', margin + 50, yPos + 5)
+      doc.text('Status', margin + 130, yPos + 5)
+      yPos += 10
+
+      // Table rows
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(7)
+      Object.entries(report.merchant_locks).forEach(([productId, lockInfo]: [string, any], idx: number) => {
+        if (yPos > 275) {
+          doc.addPage()
+          yPos = 20
+        }
+
+        if (idx % 2 === 0) {
+          drawBox(margin, yPos - 3, pageWidth - 2 * margin, 6, '#f9fafb')
+        }
+
+        doc.setTextColor(75, 85, 99)
+        doc.text(sanitizeText(productId), margin + 2, yPos)
+        doc.text(sanitizeText(lockInfo.reason || 'Manual override'), margin + 50, yPos)
+        
+        drawBox(margin + 130, yPos - 3, 25, 5, '#fef3c7')
+        doc.setFontSize(6)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor('#92400e')
+        doc.text('LOCKED', margin + 142.5, yPos, { align: 'center' })
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7)
+
+        yPos += 6
+      })
+    }
+
+    // Audit Log
+    if (report.audit_log && report.audit_log.length > 0) {
+      if (yPos > 220) {
+        doc.addPage()
+        yPos = 20
+      }
+
+      yPos = drawSectionHeader('AUDIT TRAIL', yPos)
+
+      doc.setFontSize(8)
+      report.audit_log.forEach((entry: any, idx: number) => {
+        if (yPos > 270) {
+          doc.addPage()
+          yPos = 20
+        }
+
+        drawBox(margin, yPos, pageWidth - 2 * margin, 12, '#f9fafb', '#667eea')
+        
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(102, 126, 234)
+        doc.text(`Step ${idx + 1}: ${sanitizeText(entry.action?.replace(/_/g, ' ').toUpperCase() || 'ACTION')}`, margin + 2, yPos + 4)
+        
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7)
+        doc.setTextColor(75, 85, 99)
+        
+        let detailY = yPos + 8
+        if (entry.merchant_id) {
+          doc.text(`Merchant: ${sanitizeText(entry.merchant_id)}`, margin + 2, detailY)
+        }
+        if (entry.flags_found !== undefined) {
+          doc.text(`Flags: ${entry.flags_found}`, margin + 60, detailY)
+        }
+        if (entry.alert_level) {
+          doc.text(`Alert: ${entry.alert_level}`, margin + 90, detailY)
+        }
+
+        doc.setFontSize(8)
+        yPos += 14
+      })
+    }
+
     // Footer on all pages
     const pageCount = doc.getNumberOfPages()
     for (let i = 1; i <= pageCount; i++) {
@@ -793,6 +1002,28 @@ export default function Dashboard() {
               </div>
             )}
 
+            {report.throttle_mode_active && report.status !== 'FROZEN' && (
+              <div className={styles.alertBox} style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
+                <h3>⚠️ Throttle Mode Active</h3>
+                <p>System is operating in safety mode due to previous viral spike detection.</p>
+              </div>
+            )}
+
+            {report.schema_validation_passed !== undefined && (
+              <div className={styles.section} style={{ padding: '10px 20px', backgroundColor: '#f9fafb' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontWeight: 'bold' }}>Data Quality:</span>
+                  {report.schema_validation_passed ? (
+                    <span style={{ color: '#10b981' }}>✓ Valid</span>
+                  ) : (
+                    <span style={{ color: '#f59e0b' }}>
+                      ⚠️ Validation Issues {report.retry_count ? `(${report.retry_count} retries)` : ''}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
             {report.summary && (
               <div className={styles.section}>
                 <h3>📈 Summary</h3>
@@ -817,6 +1048,101 @@ export default function Dashboard() {
               </div>
             )}
 
+            {report.metrics && (
+              <div className={styles.section}>
+                <h3>📊 Reliability Metrics</h3>
+                <div className={styles.statsGrid}>
+                  <div className={styles.stat}>
+                    <span className={styles.statLabel}>Pricing Pass Rate</span>
+                    <span className={styles.statValue} style={{ 
+                      color: (report.metrics.pricing_pass_rate || 0) >= 80 ? '#10b981' : '#f59e0b' 
+                    }}>
+                      {report.metrics.pricing_pass_rate?.toFixed(1) || '0.0'}%
+                    </span>
+                  </div>
+                  <div className={styles.stat}>
+                    <span className={styles.statLabel}>Automated Block Rate</span>
+                    <span className={styles.statValue} style={{ 
+                      color: (report.metrics.automated_block_rate || 0) <= 10 ? '#10b981' : '#f59e0b' 
+                    }}>
+                      {report.metrics.automated_block_rate?.toFixed(1) || '0.0'}%
+                    </span>
+                  </div>
+                  <div className={styles.stat}>
+                    <span className={styles.statLabel}>Hallucination Rate</span>
+                    <span className={styles.statValue} style={{ 
+                      color: (report.metrics.hallucination_rate || 0) === 0 ? '#10b981' : '#ef4444' 
+                    }}>
+                      {report.metrics.hallucination_rate?.toFixed(1) || '0.0'}%
+                    </span>
+                  </div>
+                  <div className={styles.stat}>
+                    <span className={styles.statLabel}>Sentiment Score</span>
+                    <span className={styles.statValue} style={{ 
+                      color: (report.metrics.sentiment_score || 0) >= 0 ? '#10b981' : '#ef4444' 
+                    }}>
+                      {report.metrics.sentiment_score?.toFixed(2) || '0.00'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {report.validation_flags && report.validation_flags.length > 0 && (
+              <div className={styles.section}>
+                <h3>🕵️ Validation Flags (Hallucination Detection)</h3>
+                <div className={styles.issuesGrid}>
+                  {report.validation_flags.map((flag: any, idx: number) => (
+                    <div key={idx} className={`${styles.issueCard} ${styles[flag.severity?.toLowerCase() || 'high']}`}>
+                      <div className={styles.issueHeader}>
+                        <span className={styles.issueType}>{flag.type || 'VALIDATION'}</span>
+                        {flag.product_id && <span className={styles.issueId}>ID: {flag.product_id}</span>}
+                      </div>
+                      <p className={styles.issueMessage}>{flag.message}</p>
+                      {flag.severity && (
+                        <div className={styles.issueSuggestion}>
+                          <span className={styles.arrowIcon}>⚠️</span> 
+                          Severity: <strong>{flag.severity}</strong>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {report.merchant_locks && Object.keys(report.merchant_locks).length > 0 && (
+              <div className={styles.section}>
+                <h3>🔒 Locked Products (Merchant Overrides)</h3>
+                <div className={styles.tableContainer}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Product ID</th>
+                        <th>Reason</th>
+                        <th>Locked Date</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(report.merchant_locks).map(([productId, lockInfo]: [string, any], idx: number) => (
+                        <tr key={idx}>
+                          <td style={{ fontWeight: 500 }}>{productId}</td>
+                          <td>{lockInfo.reason || 'Manual override'}</td>
+                          <td>{lockInfo.locked_at || 'N/A'}</td>
+                          <td>
+                            <span className={`${styles.statusBadge} ${styles.locked}`}>
+                              LOCKED
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {report.support_summary && Object.keys(report.support_summary).length > 0 && (
               <div className={styles.section}>
                 <h3>🎧 Customer Support Analysis</h3>
@@ -831,6 +1157,19 @@ export default function Dashboard() {
                     <p><strong>Messages Analyzed:</strong> {report.support_summary.total_messages}</p>
                   )}
                 </div>
+                {report.support_summary.breakdown && (
+                  <div style={{ marginTop: '15px' }}>
+                    <h4 style={{ fontSize: '14px', marginBottom: '10px' }}>Message Classification Breakdown:</h4>
+                    <div className={styles.statsGrid}>
+                      {Object.entries(report.support_summary.breakdown).map(([type, count]: [string, any]) => (
+                        <div key={type} className={styles.stat}>
+                          <span className={styles.statLabel}>{type}</span>
+                          <span className={styles.statValue}>{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -868,41 +1207,53 @@ export default function Dashboard() {
                         <th>Current</th>
                         <th>Proposed</th>
                         <th>Final</th>
+                        <th>Cost</th>
+                        <th>Margin</th>
                         <th>Status</th>
-                        <th style={{ width: '35%' }}>Reasoning & Signals</th> {/* Added Width constraint */}
+                        <th style={{ width: '30%' }}>Reasoning & Signals</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {report.pricing_actions.map((action: any, idx: number) => (
-                        <tr key={idx}>
-                          <td style={{ fontWeight: 500 }}>{action.product_name || action.product_id}</td>
-                          <td>${action.current_price?.toFixed(2)}</td>
-                          <td>${action.proposed_price?.toFixed(2)}</td>
-                          <td style={{ fontWeight: 'bold' }}>${action.final_price?.toFixed(2)}</td>
-                          <td>
-                            <span className={`${styles.statusBadge} ${styles[action.status?.toLowerCase()]}`}>
-                              {action.status}
-                            </span>
-                          </td>
-                          {/* NEW COLUMN IMPLEMENTATION */}
-                          <td>
-                            <div className={styles.reasoningText}>
-                              {action.reasoning || "No specific reasoning provided."}
-                            </div>
-                            
-                            {action.signals_used && action.signals_used.length > 0 && (
-                              <div className={styles.signalsContainer}>
-                                <span className={styles.signalsLabel}>Signals:</span>
-                                {action.signals_used.map((signal: string, sIdx: number) => (
-                                  <span key={sIdx} className={styles.signalTag}>
-                                    {signal}
-                                  </span>
-                                ))}
+                      {report.pricing_actions.map((action: any, idx: number) => {
+                        const cost = action.cost || 0
+                        const finalPrice = action.final_price || 0
+                        const margin = finalPrice > 0 ? ((finalPrice - cost) / finalPrice * 100) : 0
+                        const marginColor = margin >= 30 ? '#10b981' : margin >= 15 ? '#f59e0b' : '#ef4444'
+                        
+                        return (
+                          <tr key={idx}>
+                            <td style={{ fontWeight: 500 }}>{action.product_name || action.product_id}</td>
+                            <td>${action.current_price?.toFixed(2)}</td>
+                            <td>${action.proposed_price?.toFixed(2)}</td>
+                            <td style={{ fontWeight: 'bold' }}>${finalPrice.toFixed(2)}</td>
+                            <td>${cost.toFixed(2)}</td>
+                            <td style={{ color: marginColor, fontWeight: 'bold' }}>
+                              {margin.toFixed(1)}%
+                            </td>
+                            <td>
+                              <span className={`${styles.statusBadge} ${styles[action.status?.toLowerCase()]}`}>
+                                {action.status}
+                              </span>
+                            </td>
+                            <td>
+                              <div className={styles.reasoningText}>
+                                {action.reasoning || action.note || "No specific reasoning provided."}
                               </div>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                              
+                              {action.signals_used && action.signals_used.length > 0 && (
+                                <div className={styles.signalsContainer}>
+                                  <span className={styles.signalsLabel}>Signals:</span>
+                                  {action.signals_used.map((signal: string, sIdx: number) => (
+                                    <span key={sIdx} className={styles.signalTag}>
+                                      {signal}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -928,6 +1279,75 @@ export default function Dashboard() {
                     <li key={idx}>{warning}</li>
                   ))}
                 </ul>
+              </div>
+            )}
+
+            {report.audit_log && report.audit_log.length > 0 && (
+              <div className={styles.section}>
+                <h3>📋 Audit Trail</h3>
+                <div style={{ fontSize: '13px' }}>
+                  <div style={{ 
+                    display: 'grid', 
+                    gap: '8px',
+                    maxHeight: '300px',
+                    overflowY: 'auto',
+                    padding: '10px',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '6px'
+                  }}>
+                    {report.audit_log.map((entry: any, idx: number) => (
+                      <div 
+                        key={idx} 
+                        style={{ 
+                          padding: '10px',
+                          backgroundColor: '#ffffff',
+                          borderLeft: '3px solid #667eea',
+                          borderRadius: '4px',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                          <span style={{ fontWeight: 'bold', color: '#667eea' }}>
+                            {entry.action?.replace(/_/g, ' ').toUpperCase()}
+                          </span>
+                          <span style={{ fontSize: '11px', color: '#6b7280' }}>
+                            Step {idx + 1}
+                          </span>
+                        </div>
+                        {entry.merchant_id && (
+                          <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                            Merchant: {entry.merchant_id}
+                          </div>
+                        )}
+                        {entry.flags_found !== undefined && (
+                          <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                            Flags Found: {entry.flags_found}
+                          </div>
+                        )}
+                        {entry.alert_level && (
+                          <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                            Alert Level: <span style={{ 
+                              color: entry.alert_level === 'RED' ? '#ef4444' : 
+                                     entry.alert_level === 'YELLOW' ? '#f59e0b' : '#10b981',
+                              fontWeight: 'bold'
+                            }}>{entry.alert_level}</span>
+                          </div>
+                        )}
+                        {entry.metrics && (
+                          <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '5px' }}>
+                            Metrics: Pass Rate {entry.metrics.pricing_pass_rate}%, 
+                            Hallucinations {entry.metrics.hallucination_rate}%
+                          </div>
+                        )}
+                        {entry.reason && (
+                          <div style={{ fontSize: '12px', color: '#ef4444', marginTop: '5px' }}>
+                            Reason: {entry.reason}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </div>

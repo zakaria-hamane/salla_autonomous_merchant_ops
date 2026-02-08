@@ -340,17 +340,32 @@ def conflict_resolver_node(state: Dict[str, Any]) -> Dict[str, Any]:
             "status": "APPROVED"
         })
     
+    # --- RELIABILITY METRICS CALCULATION ---
+    total_ops = len(proposals)
+    approved_ops = len([a for a in final_actions if a["status"] == "APPROVED"])
+    blocked_ops = len([a for a in final_actions if a["status"] == "BLOCKED"])
+    hallucination_count = len([f for f in validation_flags if f["type"] == "HALLUCINATION"])
+    
+    metrics = {
+        "pricing_pass_rate": round((approved_ops / total_ops * 100), 1) if total_ops > 0 else 0.0,
+        "automated_block_rate": round((blocked_ops / total_ops * 100), 1) if total_ops > 0 else 0.0,
+        "hallucination_rate": round((hallucination_count / total_ops * 100), 1) if total_ops > 0 else 0.0,
+        "sentiment_score": sentiment
+    }
+    
     # Calculate Final Alert Level
     critical_issues_count = len([i for i in catalog_issues if i.get("type") == "critical"])
     alert_level = "RED" if critical_issues_count > 0 else "YELLOW" if warnings else "GREEN"
     
     print(f"✓ Finalized {len(final_actions)} pricing decisions")
+    print(f"✓ Metrics: Pass Rate {metrics['pricing_pass_rate']}%, Hallucinations {metrics['hallucination_rate']}%")
     print(f"✓ Alert Level: {alert_level}")
     
     # Generate final report
     final_report = {
         "status": "COMPLETED",
         "alert_level": alert_level,
+        "metrics": metrics,  # Added to report
         "summary": {
             "total_products": len(proposals),
             "approved_changes": len([a for a in final_actions if a["status"] == "APPROVED"]),
@@ -361,7 +376,13 @@ def conflict_resolver_node(state: Dict[str, Any]) -> Dict[str, Any]:
         "support_summary": support_summary,
         "pricing_actions": final_actions,
         "warnings": warnings,
-        "recommendations": generate_recommendations(state, final_actions, warnings)
+        "recommendations": generate_recommendations(state, final_actions, warnings),
+        "validation_flags": validation_flags,  # Added to report for frontend visibility
+        "merchant_locks": merchant_locks,  # Added for transparency
+        "schema_validation_passed": state.get("schema_validation_passed", True),  # Added for debugging
+        "retry_count": state.get("retry_count", 0),  # Added for debugging
+        "throttle_mode_active": state.get("throttle_mode_active", False),  # Added for status
+        "audit_log": state.get("audit_log", [])  # Added for full transparency
     }
     
     return {
@@ -369,7 +390,7 @@ def conflict_resolver_node(state: Dict[str, Any]) -> Dict[str, Any]:
         "audit_log": [{
             "action": "workflow_completed",
             "alert_level": alert_level,
-            "actions_count": len(final_actions)
+            "metrics": metrics
         }]
     }
 
