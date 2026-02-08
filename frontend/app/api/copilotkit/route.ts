@@ -7,26 +7,43 @@ import OpenAI from "openai";
 import { NextRequest } from "next/server";
 
 export const POST = async (req: NextRequest) => {
-  // Initialize OpenAI client configured for Azure
-  const openai = new OpenAI({
-    apiKey: process.env.AZURE_OPENAI_API_KEY,
-    baseURL: `${process.env.AZURE_OPENAI_ENDPOINT}/openai/deployments/${process.env.AZURE_OPENAI_DEPLOYMENT_NAME}`,
-    defaultQuery: { "api-version": process.env.AZURE_OPENAI_API_VERSION },
-    defaultHeaders: { "api-key": process.env.AZURE_OPENAI_API_KEY || "" },
-  });
-
-  const serviceAdapter = new OpenAIAdapter({ 
-    openai,
-    model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5",
-  });
+  const apiKey = process.env.OPENAI_API_KEY;
   
-  const runtime = new CopilotRuntime();
+  if (!apiKey) {
+    console.error("❌ OpenAI API key missing in environment variables.");
+    return new Response(
+      JSON.stringify({ error: "OpenAI API key missing" }), 
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
 
-  const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
-    runtime,
-    serviceAdapter,
-    endpoint: "/api/copilotkit",
-  });
+  try {
+    console.log("🔌 Initializing OpenAI Adapter");
 
-  return handleRequest(req);
+    // Initialize standard OpenAI client
+    const openai = new OpenAI({
+      apiKey: apiKey,
+    });
+
+    // Create OpenAI adapter
+    const serviceAdapter = new OpenAIAdapter({
+      openai,
+    });
+    
+    const runtime = new CopilotRuntime();
+
+    const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
+      runtime,
+      serviceAdapter,
+      endpoint: "/api/copilotkit",
+    });
+
+    return handleRequest(req);
+  } catch (error) {
+    console.error("❌ Error initializing CopilotKit:", error);
+    return new Response(
+      JSON.stringify({ error: "Internal Server Error" }), 
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
 };

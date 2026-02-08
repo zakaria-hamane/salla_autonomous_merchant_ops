@@ -142,16 +142,20 @@ export default function Dashboard() {
       if (reader) {
         while (true) {
           const { done, value } = await reader.read()
-          if (done) {
-            console.log('Stream reading complete')
-            break
+          
+          if (!done) {
+            buffer += decoder.decode(value, { stream: true })
+          } else {
+            // Process any remaining buffer data before breaking
+            if (buffer.trim()) {
+              buffer += '\n' // Add newline to trigger final processing
+            }
           }
           
-          buffer += decoder.decode(value, { stream: true })
           const lines = buffer.split('\n')
           
-          // Keep the last incomplete line in the buffer
-          buffer = lines.pop() || ''
+          // Keep the last incomplete line in the buffer (unless stream is done)
+          buffer = done ? '' : (lines.pop() || '')
           
           let currentEvent = ''
           let currentData = ''
@@ -195,6 +199,11 @@ export default function Dashboard() {
               currentData = ''
             }
           }
+          
+          if (done) {
+            console.log('Stream reading complete')
+            break
+          }
         }
       }
 
@@ -207,6 +216,7 @@ export default function Dashboard() {
         
         if (finalState.final_report) {
           console.log('Final report status:', finalState.final_report.status)
+          console.log('Final report keys:', Object.keys(finalState.final_report))
         }
       }
 
@@ -216,19 +226,19 @@ export default function Dashboard() {
         throw new Error("Workflow completed but no state was captured from the stream.")
       }
       
-      if (!finalState.final_report) {
-        console.error('Final state has no final_report property')
-        console.error('Available keys:', Object.keys(finalState))
-        throw new Error("Workflow completed but no report was generated.")
-      }
+      // Check if final_report exists and has content
+      let reportData = null
       
-      if (!finalState.final_report.status) {
-        console.error('Final report has no status')
+      if (finalState.final_report && Object.keys(finalState.final_report).length > 0 && finalState.final_report.status) {
+        // Use the final_report if it's populated
+        reportData = finalState.final_report
+        console.log('Using final_report from state')
+      } else {
+        console.error('Final report is empty or missing status')
         console.error('Final report:', finalState.final_report)
+        console.error('Available state keys:', Object.keys(finalState))
         throw new Error("Workflow completed but report has no status.")
       }
-      
-      const reportData = finalState.final_report
       console.log('Setting report with status:', reportData.status)
       setReport(reportData)
       // ----------------------------------------
