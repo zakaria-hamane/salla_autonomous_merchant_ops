@@ -9,7 +9,7 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - ./backend/.env
+      - ./.env
     volumes:
       - ./backend:/app
       - ./data:/app/data
@@ -24,8 +24,7 @@ services:
     ports:
       - "3001:3000"
     env_file:
-      - ./backend/.env
-      - ./frontend/.env.local
+      - ./.env
     environment:
       - PORT=3000
     volumes:
