@@ -17,6 +17,8 @@
     *   [Viral-Post-Driven Complaint Spike](#32-viral-post-driven-complaint-spike)
     *   [Preventing Agent Error Feedback Loops](#33-preventing-agent-error-feedback-loops)
     *   [Preventing Overwriting Merchant Decisions](#34-preventing-overwriting-merchant-decisions)
+4.  [LangSmith Tracing & Observability](#4-langsmith-tracing--observability)
+    *   [Live System Trace](#41-live-system-trace)
 
 ---
 
@@ -335,3 +337,23 @@ This section outlines the specific strategies implemented in the Salla Autonomou
 *   **Audit Logs:**
     *   Every action taken by the system is appended to the `audit_log` list in the state.
     *   This log is returned to the frontend and displayed in the "Audit Trail" section of the report, ensuring transparency.
+
+---
+
+## 4. LangSmith Tracing & Observability
+
+### 4.1 Live System Trace
+
+For reviewers evaluating this assignment, a complete LangSmith trace of a production run is available:
+
+**🔗 LangSmith Run:** [View Complete Trace](https://smith.langchain.com/public/272281d1-6aaa-49c4-9207-5b7b67f7d4d9/r)
+
+This trace demonstrates:
+- Complete agent orchestration flow from data ingestion to final report generation
+- Individual agent decision-making processes (Catalog, Support, Pricing)
+- Validation pipeline execution and conflict resolution
+- Real-time state management and context passing between agents
+- LLM token usage and latency metrics for each step
+- Error handling and retry logic in action
+
+The trace provides full transparency into how the system processes merchant data, makes decisions, and applies safety protocols in a real-world scenario.
