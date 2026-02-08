@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useCopilotAction, useCopilotReadable } from "@copilotkit/react-core"
 import styles from './Dashboard.module.css'
 import jsPDF from 'jspdf'
@@ -40,6 +40,17 @@ export default function Dashboard() {
     pricing?: File
   }>({})
 
+  // Calculate classification breakdown from raw classifications list
+  const classificationBreakdown = useMemo(() => {
+    if (!report?.support_summary?.classifications) return null
+    
+    const counts: Record<string, number> = {}
+    report.support_summary.classifications.forEach((item: any) => {
+      const type = item.type || 'Unknown'
+      counts[type] = (counts[type] || 0) + 1
+    })
+    return counts
+  }, [report?.support_summary])
   // Make report data readable by CopilotKit
   useCopilotReadable({
     description: "The current operations report for the merchant",
@@ -547,8 +558,11 @@ export default function Dashboard() {
       if (report.support_summary.total_messages) {
         supportData.push({ label: 'Messages Analyzed', value: String(report.support_summary.total_messages) })
       }
+      if (report.support_summary.complaint_count !== undefined) {
+        supportData.push({ label: 'Complaints', value: String(report.support_summary.complaint_count) })
+      }
 
-      const boxWidth = (pageWidth - 2 * margin - 6) / 3
+      const boxWidth = (pageWidth - 2 * margin - 9) / 4
       supportData.forEach((item, idx) => {
         const xPos = margin + idx * (boxWidth + 3)
         drawBox(xPos, yPos, boxWidth, 12, '#f9fafb', '#e5e7eb')
@@ -561,6 +575,44 @@ export default function Dashboard() {
         doc.text(item.value, xPos + 2, yPos + 9)
       })
       yPos += 18
+
+      // Trending Topics
+      if (report.support_summary.topics && report.support_summary.topics.length > 0) {
+        yPos = drawSectionHeader('TRENDING TOPICS', yPos)
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(55, 65, 81)
+        
+        const topicsText = report.support_summary.topics.map((t: string) => sanitizeText(t)).join(', ')
+        const lines = doc.splitTextToSize(topicsText, pageWidth - 2 * margin - 6)
+        drawBox(margin, yPos - 2, pageWidth - 2 * margin, 8, '#fef3c7', '#f59e0b')
+        doc.text(lines, margin + 3, yPos + 2)
+        yPos += 10
+      }
+
+      // Classification Breakdown (calculate from classifications)
+      if (report.support_summary.classifications && report.support_summary.classifications.length > 0) {
+        const breakdown: Record<string, number> = {}
+        report.support_summary.classifications.forEach((item: any) => {
+          const type = item.type || 'Unknown'
+          breakdown[type] = (breakdown[type] || 0) + 1
+        })
+
+        yPos = drawSectionHeader('MESSAGE CLASSIFICATION', yPos)
+        const breakdownBoxWidth = (pageWidth - 2 * margin - 9) / 4
+        Object.entries(breakdown).forEach(([type, count], idx) => {
+          const xPos = margin + idx * (breakdownBoxWidth + 3)
+          drawBox(xPos, yPos, breakdownBoxWidth, 12, '#f9fafb', '#e5e7eb')
+          doc.setFontSize(7)
+          doc.setFont('helvetica', 'bold')
+          doc.setTextColor(55, 65, 81)
+          doc.text(sanitizeText(type), xPos + 2, yPos + 5)
+          doc.setFontSize(12)
+          doc.setFont('helvetica', 'bold')
+          doc.text(String(count), xPos + 2, yPos + 10)
+        })
+        yPos += 16
+      }
     }
 
     // Catalog Issues with colored boxes
@@ -1156,12 +1208,39 @@ export default function Dashboard() {
                   {report.support_summary.total_messages && (
                     <p><strong>Messages Analyzed:</strong> {report.support_summary.total_messages}</p>
                   )}
+                  {report.support_summary.complaint_count !== undefined && (
+                    <p><strong>Complaints:</strong> {report.support_summary.complaint_count}</p>
+                  )}
                 </div>
-                {report.support_summary.breakdown && (
+
+                {/* Trending Topics Display */}
+                {report.support_summary.topics && report.support_summary.topics.length > 0 && (
                   <div style={{ marginTop: '15px' }}>
-                    <h4 style={{ fontSize: '14px', marginBottom: '10px' }}>Message Classification Breakdown:</h4>
+                    <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#4b5563' }}>🔥 Trending Topics:</h4>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {report.support_summary.topics.map((topic: string, idx: number) => (
+                        <span key={idx} style={{
+                          backgroundColor: '#fef3c7',
+                          border: '1px solid #f59e0b',
+                          borderRadius: '15px',
+                          padding: '5px 12px',
+                          fontSize: '13px',
+                          color: '#92400e',
+                          fontWeight: '500'
+                        }}>
+                          {topic}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Dynamic Classification Breakdown */}
+                {(classificationBreakdown || report.support_summary.breakdown) && (
+                  <div style={{ marginTop: '15px' }}>
+                    <h4 style={{ fontSize: '14px', marginBottom: '10px', color: '#4b5563' }}>📊 Message Classification:</h4>
                     <div className={styles.statsGrid}>
-                      {Object.entries(report.support_summary.breakdown).map(([type, count]: [string, any]) => (
+                      {Object.entries(classificationBreakdown || report.support_summary.breakdown).map(([type, count]: [string, any]) => (
                         <div key={type} className={styles.stat}>
                           <span className={styles.statLabel}>{type}</span>
                           <span className={styles.statValue}>{count}</span>
@@ -1182,8 +1261,11 @@ export default function Dashboard() {
                       <div className={styles.issueHeader}>
                         <span className={styles.issueType}>{issue.type || 'NOTICE'}</span>
                         {issue.product_id && <span className={styles.issueId}>ID: {issue.product_id}</span>}
+                        {issue.id && !issue.product_id && <span className={styles.issueId}>ID: {issue.id}</span>}
                       </div>
-                      <p className={styles.issueMessage}>{issue.message || issue.description}</p>
+                      <p className={styles.issueMessage}>
+                        {issue.message || issue.description || issue.issue || JSON.stringify(issue)}
+                      </p>
                       {issue.suggestion && (
                         <div className={styles.issueSuggestion}>
                           <span className={styles.arrowIcon}>↳</span> 

@@ -45,10 +45,24 @@ Analyze the product data and:
 3. Identify potential duplicates
 4. Flag low-quality descriptions
 
-Return JSON with:
-- normalized_products: cleaned product list
-- issues: list of problems found
-- confidence_score: 0-1 score for data quality"""),
+You MUST return valid JSON with this exact structure:
+{{
+  "normalized_products": [
+    {{"id": "P001", "name": "Product Name", "price": 100.0, "cost": 50.0}}
+  ],
+  "issues": [
+    {{"type": "warning", "product_id": "P001", "message": "Description of the issue", "suggestion": "How to fix it"}}
+  ],
+  "confidence_score": 0.85
+}}
+
+CRITICAL: Each issue MUST have:
+- type: "critical", "warning", or "info"
+- message: Clear description of the problem
+- product_id: (optional) ID of affected product
+- suggestion: (optional) How to fix it
+
+Return ONLY valid JSON, no other text."""),
         ("user", "Products to analyze:\n{products}")
     ])
     
