@@ -181,6 +181,32 @@ export default function Dashboard() {
                   // Always capture the latest state
                   finalState = data
                   
+                  // REAL-TIME UPDATE: Show progress as audit log populates
+                  if (data.audit_log && data.audit_log.length > 0) {
+                    // Create a partial report to show streaming progress
+                    const partialReport = data.final_report || {
+                      status: data.final_report?.status || "RUNNING",
+                      audit_log: data.audit_log,
+                      summary: data.summary || {},
+                      metrics: data.metrics || {},
+                      support_summary: data.support_summary || {},
+                      catalog_issues: data.catalog_issues || [],
+                      pricing_actions: data.pricing_actions || [],
+                      validation_flags: data.validation_flags || [],
+                      warnings: data.warnings || [],
+                      recommendations: data.recommendations || [],
+                      merchant_locks: data.merchant_locks || {},
+                      alert_level: data.alert_level,
+                      alert_message: data.alert_message,
+                      throttle_mode_active: data.throttle_mode_active,
+                      schema_validation_passed: data.schema_validation_passed,
+                      retry_count: data.retry_count
+                    }
+                    
+                    // Update UI in real-time so users see the audit log streaming
+                    setReport(partialReport)
+                  }
+                  
                   // Log when we see a final_report
                   if (data.final_report) {
                     console.log('Found final_report with status:', data.final_report.status)
@@ -923,10 +949,33 @@ export default function Dashboard() {
     <div className={styles.container}>
       {/* Loading Overlay */}
       {/* This ensures the user sees the dashboard "thinking" even if triggered from Chat */}
-      {loading && (
+      {/* Only show full overlay if no report data yet, otherwise show streaming indicator */}
+      {loading && !report && (
         <div className={styles.loadingOverlay}>
           <div className={styles.spinner}></div>
           <p>🤖 AI Agents are analyzing your store...</p>
+        </div>
+      )}
+      
+      {/* Streaming indicator when report is being populated */}
+      {loading && report && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          backgroundColor: '#667eea',
+          color: 'white',
+          padding: '12px 20px',
+          borderRadius: '8px',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          zIndex: 1000,
+          animation: 'pulse 2s ease-in-out infinite'
+        }}>
+          <div className={styles.spinner} style={{ width: '16px', height: '16px' }}></div>
+          <span>Streaming updates...</span>
         </div>
       )}
 
@@ -1092,19 +1141,19 @@ export default function Dashboard() {
                 <div className={styles.statsGrid}>
                   <div className={styles.stat}>
                     <span className={styles.statLabel}>Total Products</span>
-                    <span className={styles.statValue}>{report.summary.total_products}</span>
+                    <span className={styles.statValue}>{report.summary.total_products || 0}</span>
                   </div>
                   <div className={styles.stat}>
                     <span className={styles.statLabel}>Approved Changes</span>
-                    <span className={styles.statValue}>{report.summary.approved_changes}</span>
+                    <span className={styles.statValue}>{report.summary.approved_changes || 0}</span>
                   </div>
                   <div className={styles.stat}>
                     <span className={styles.statLabel}>Blocked Changes</span>
-                    <span className={styles.statValue}>{report.summary.blocked_changes}</span>
+                    <span className={styles.statValue}>{report.summary.blocked_changes || 0}</span>
                   </div>
                   <div className={styles.stat}>
                     <span className={styles.statLabel}>Locked Products</span>
-                    <span className={styles.statValue}>{report.summary.locked_products}</span>
+                    <span className={styles.statValue}>{report.summary.locked_products || 0}</span>
                   </div>
                 </div>
               </div>
