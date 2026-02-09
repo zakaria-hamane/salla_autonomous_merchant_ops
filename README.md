@@ -33,6 +33,13 @@ A multi-agent system for autonomous merchant operations management using LangGra
 
 ## Development
 
+### Recommended (Docker)
+```bash
+docker compose -f docker-compose.local.yml down
+docker compose -f docker-compose.local.yml build
+docker compose -f docker-compose.local.yml up -d
+```
+
 ### Backend (Python/LangGraph)
 ```bash
 cd backend
@@ -58,10 +65,10 @@ The system implements a "Gated Pipeline" topology with:
 - **Pricing Agent**: Recommends pricing adjustments
 - **Safety Gates**: Circuit breakers for anomaly detection
 
-See `docs/my_plan.md` for detailed architecture.
+See `docs\Salla_AI_Agents_Project_Report.md` for detailed architecture.
 
 ## Assignment Details
 
-See `docs/Autonomous_Merchant_Operations_Multi_Agent_System.md` for full requirements.
+See `docs/Autonomous_Merchant_Operations_Multi_Agent_System.PDF` for full requirements.
 
 **Deadline**: EOD Tuesday, February 10th, 2026
