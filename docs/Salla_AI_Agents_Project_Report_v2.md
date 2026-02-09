@@ -27,6 +27,8 @@
 
 ## 1. Implementation Status & Architecture Overview
 
+> **Addresses Assignment Requirement 1:** System Architecture - Agent roles, communication model, fail-safes, and grounding mechanisms
+
 ### 1.1 Deliverables Status
 The system has been implemented as a graph-based multi-agent application. The core logic is fully operational, with a focus on deterministic safeguards for pricing and rigorous schema validation for catalog data.
 
@@ -190,6 +192,8 @@ flowchart TD
 
 ## 2. Technical Build Report
 
+> **Addresses Assignment Requirement 6:** Build Report - System design rationale, agent behavior, implementation decisions, debugging process, testing approach, and final system walkthrough
+
 ### 2.1 System Design Rationale
 
 **Architectural Choice: LangGraph Server over Stateless Chains**
@@ -245,9 +249,14 @@ We moved beyond "vibes-based" testing to a structured test suite located in `bac
 
 ## 3. Edge Case Handling & Safety Protocols
 
+> **Addresses Assignment Requirement 5:** Edge-Case Challenges - Catalog misclassification, viral-post spikes, agent feedback loops, and merchant override protection
+
 A robust AI system is defined not by how it handles happy paths, but how it handles failure. Below are the specific protocols we implemented for the required edge cases.
 
 ### 3.1 Mitigation: Catalog Misclassification
+
+> **Assignment Question 5.1:** "How do you prevent, detect, and correct Catalog Agent misclassification affecting Pricing Agent?"
+
 **Risk:** The Catalog Agent misclassifies a high-value "Espresso Machine" as a low-value "Accessory," causing the Pricing Agent to undercut the price aggressively.
 
 *   **Prevention (Schema):** We utilize strict Enum constraints in our Pydantic models (`state.py`) to limit the LLM's classification choices.
@@ -255,6 +264,9 @@ A robust AI system is defined not by how it handles happy paths, but how it hand
 *   **Correction:** The `validator_node` (`nodes.py`) performs a statistical sanity check. If a price deviation exceeds 50% of the category average, it is flagged as a `DATA_MISMATCH` and the status is set to `BLOCKED`.
 
 ### 3.2 Mitigation: Viral-Post-Driven Spikes
+
+> **Assignment Question 5.2:** "Explain anomaly detection and response throttling for viral-post-driven complaint spikes."
+
 **Risk:** A PR crisis causes 500+ complaints in an hour. Standard automated pricing might lower prices in response to "sentiment," accidentally validating the mob.
 
 *   **Anomaly Detection:** We implemented a `complaint_velocity` metric in `agents/support_agent.py::support_agent`.
@@ -265,6 +277,9 @@ A robust AI system is defined not by how it handles happy paths, but how it hand
     *   **Outcome:** The system returns a global `FROZEN` status. **Zero** pricing changes are permitted until a human reviews the spike.
 
 ### 3.3 Mitigation: Feedback Loops
+
+> **Assignment Question 5.3:** "Describe techniques to prevent agent error feedback loops."
+
 **Risk:** Agents getting stuck in an infinite loop of "Please fix this data" <-> "Data is fixed."
 
 *   **DAG Architecture:** Our graph (`graph.py`) is primarily a **Directed Acyclic Graph (DAG)**. Data flows forward: `Coordinator -> Support -> Catalog -> Pricing -> Validator -> Resolver`.
@@ -273,6 +288,9 @@ A robust AI system is defined not by how it handles happy paths, but how it hand
     *   If `retry_count >= 2`, the graph forces a "Fail Forward" to the Resolver (`graph.py::check_schema_gate`), logging the error rather than hanging the process.
 
 ### 3.4 Mitigation: Merchant Override Integrity
+
+> **Assignment Question 5.4:** "Define audit logs, immutable merchant overrides, and human-in-the-loop locking."
+
 **Risk:** The AI thinking it knows better than the merchant and overwriting manual pricing decisions.
 
 *   **Immutability:** We treat `merchant_locks` (`state.py::AgentState`) as the "Source of Truth."
@@ -288,6 +306,8 @@ A robust AI system is defined not by how it handles happy paths, but how it hand
 ---
 
 ## 4. LangSmith Tracing & Observability
+
+> **Addresses Assignment Requirement 7.1:** LangSmith integration for tracing LangGraph runs and LLM calls
 
 ### 4.1 Live System Trace
 
