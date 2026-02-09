@@ -314,6 +314,10 @@ A robust AI system is defined not by how it handles happy paths, but how it hand
 
 The system features a fully functional Next.js dashboard integrated with CopilotKit, providing merchants with a conversational interface to interact with the autonomous operations system.
 
+**🌐 Live Demo:** [http://72.146.12.109:3004/](http://72.146.12.109:3004/)
+
+*The deployed application is accessible for testing and evaluation. Simply visit the URL to interact with the CopilotKit interface and trigger autonomous operations runs.*
+
 #### Dashboard Overview
 ![CopilotKit Dashboard - Main View](images/copilot_frontend1.png)
 *Figure 4.1.1: Main dashboard showing the merchant operations interface with real-time status updates and actionable insights.*
