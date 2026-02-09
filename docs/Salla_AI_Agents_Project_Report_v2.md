@@ -20,8 +20,9 @@
    - 3.3 [Mitigation: Feedback Loops](#33-mitigation-feedback-loops)
    - 3.4 [Mitigation: Merchant Override Integrity](#34-mitigation-merchant-override-integrity)
 
-4. [LangSmith Tracing & Observability](#4-langsmith-tracing--observability)
-   - 4.1 [Live System Trace](#41-live-system-trace)
+4. [Live System Demonstration & Observability](#4-live-system-demonstration--observability)
+   - 4.1 [CopilotKit Frontend Integration](#41-copilotkit-frontend-integration)
+   - 4.2 [LangSmith Tracing & Production Evidence](#42-langsmith-tracing--production-evidence)
 
 ---
 
@@ -305,14 +306,53 @@ A robust AI system is defined not by how it handles happy paths, but how it hand
 
 ---
 
-## 4. LangSmith Tracing & Observability
+## 4. Live System Demonstration & Observability
 
-> **Addresses Assignment Requirement 7.1:** LangSmith integration for tracing LangGraph runs and LLM calls
+> **Addresses Assignment Requirement 7:** LangSmith integration, LangGraph deployment, and CopilotKit UI integration
 
-### 4.1 Live System Trace
+### 4.1 CopilotKit Frontend Integration
 
-We believe in radical transparency for AI systems. Below is a link to a full production trace of the system running the "Daily Operations" workflow. This trace captures the token inputs, latency, and decision logic for every node in the graph.
+The system features a fully functional Next.js dashboard integrated with CopilotKit, providing merchants with a conversational interface to interact with the autonomous operations system.
+
+#### Dashboard Overview
+![CopilotKit Dashboard - Main View](images/copilot_frontend1.png)
+*Figure 4.1.1: Main dashboard showing the merchant operations interface with real-time status updates and actionable insights.*
+
+#### Conversational Interface
+![CopilotKit Chat Interface](images/copilot_frontend2.png)
+*Figure 4.1.2: CopilotKit's conversational UI allows merchants to query the system naturally (e.g., "Run today's operations check" or "Why was this price blocked?").*
+
+#### Report Visualization
+![Daily Operations Report](images/copilot_frontend3.png)
+*Figure 4.1.3: The generated daily report displays catalog issues, pricing recommendations, support summaries, and alert levels with full transparency into agent decisions.*
+
+**Key Features Demonstrated:**
+- **Real-time Streaming:** SSE connection shows agent progress as it happens
+- **Conversational Queries:** Merchants can ask natural language questions about operations
+- **Structured Output:** Clean visualization of complex multi-agent decisions
+- **Actionable Insights:** Color-coded alerts (RED/YELLOW/GREEN) with clear recommendations
+- **Audit Trail:** Full transparency into why each decision was made
+
+### 4.2 LangSmith Tracing & Production Evidence
+
+We believe in radical transparency for AI systems. Below is evidence of the system running in production with full observability.
+
+#### LangSmith Trace Dashboard
+![LangSmith Production Trace](images/langsmith_run.png)
+*Figure 4.2.1: LangSmith trace showing the complete execution flow, token usage, latency metrics, and decision logic for each agent node.*
+
+#### Live System Trace
+
+A complete LangSmith trace of a production run is available for detailed inspection:
 
 **🔗 LangSmith Run:** [View Complete Production Trace](https://smith.langchain.com/public/272281d1-6aaa-49c4-9207-5b7b67f7d4d9/r)
+
+This trace demonstrates:
+- Complete agent orchestration flow from data ingestion to final report generation
+- Individual agent decision-making processes (Catalog, Support, Pricing)
+- Validation pipeline execution and conflict resolution
+- Real-time state management and context passing between agents
+- LLM token usage and latency metrics for each step
+- Error handling and retry logic in action
 
 *Note: This trace demonstrates the system successfully identifying a negative sentiment spike and blocking a price increase for Product P001, verifying our "Safety Gate" logic.*
