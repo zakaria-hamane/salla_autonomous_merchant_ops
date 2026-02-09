@@ -82,7 +82,7 @@ def coordinator_node(state: Dict[str, Any]) -> Dict[str, Any]:
     # Initialize tracking
     return {
         "retry_count": 0,
-        "merchant_locks": {},
+        "merchant_locks": state.get("merchant_locks", {}),
         "audit_log": [{
             "action": "workflow_started",
             "merchant_id": merchant_id
