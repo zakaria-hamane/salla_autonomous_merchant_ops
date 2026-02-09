@@ -20,7 +20,6 @@ A multi-agent system for autonomous merchant operations management using LangGra
    ```bash
    cp .env.example .env
    # Edit .env with your API keys
-   # Choose OpenAI or Azure OpenAI (see docs/AZURE_OPENAI_SETUP.md)
    ```
 
 2. **Run with Docker Compose**

@@ -1,6 +1,7 @@
 """
 LangGraph nodes implementing the orchestration logic.
 """
+import re
 from typing import Dict, Any
 from agents.catalog_agent import catalog_agent
 from agents.support_agent import support_agent
@@ -81,7 +82,7 @@ def coordinator_node(state: Dict[str, Any]) -> Dict[str, Any]:
     # Initialize tracking
     return {
         "retry_count": 0,
-        "merchant_locks": {},
+        "merchant_locks": state.get("merchant_locks", {}),
         "audit_log": [{
             "action": "workflow_started",
             "merchant_id": merchant_id
@@ -131,6 +132,85 @@ def throttler_node(state: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def validator_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Validator: Performs hallucination checks and contradiction detection.
+    This is the verification layer between agent outputs and final resolution.
+    """
+    print("\n--- 🕵️ Validator Agent: Pipeline Checks ---")
+    
+    proposals = state.get("pricing_proposals", [])
+    pricing_context = state.get("pricing_context", [])
+    sentiment = state.get("sentiment_score", 0.0)
+    
+    validation_flags = []
+    
+    # Convert pricing context to a lookup map for O(1) access
+    # Map: product_id -> competitor_price
+    context_map = {
+        item.get("product_id"): float(item.get("competitor_price", 0)) 
+        for item in pricing_context
+    }
+    
+    for proposal in proposals:
+        pid = proposal.get("product_id")
+        signals = proposal.get("signals_used", [])
+        
+        # --- CHECK 1: HALLUCINATION CHECK (Ungrounded Claims) ---
+        # Look for claims like "competitor_price: $115.00" in signals
+        for signal in signals:
+            if "competitor_price" in signal:
+                # Extract the number from the string
+                match = re.search(r"competitor_price:\s*\$?([\d\.]+)", signal)
+                if match:
+                    claimed_price = float(match.group(1))
+                    
+                    # Verify against source of truth
+                    actual_price = context_map.get(pid)
+                    
+                    if actual_price is None:
+                        flag = {
+                            "product_id": pid,
+                            "type": "HALLUCINATION",
+                            "severity": "HIGH",
+                            "message": f"Agent cited competitor price ${claimed_price}, but no competitor data exists for this product."
+                        }
+                        validation_flags.append(flag)
+                        print(f"🚨 Hallucination detected for {pid}: Claimed context that doesn't exist.")
+                    
+                    elif abs(claimed_price - actual_price) > 0.01:
+                        flag = {
+                            "product_id": pid,
+                            "type": "DATA_MISMATCH",
+                            "severity": "HIGH",
+                            "message": f"Agent cited competitor price ${claimed_price}, but source data says ${actual_price}."
+                        }
+                        validation_flags.append(flag)
+                        print(f"🚨 Data Mismatch for {pid}: Claimed ${claimed_price} vs Actual ${actual_price}")
+        
+        # --- CHECK 2: CONTRADICTION DETECTION ---
+        # Check: Positive price action vs Negative Sentiment
+        if proposal.get("status") == "INCREASE" and sentiment < -0.3:
+            flag = {
+                "product_id": pid,
+                "type": "CONTRADICTION",
+                "severity": "MEDIUM",
+                "message": f"Proposed price increase contradicts negative market sentiment ({sentiment:.2f})."
+            }
+            validation_flags.append(flag)
+            print(f"⚠️ Contradiction detected for {pid}: Price hike during negative sentiment.")
+    
+    print(f"✓ Validation complete. Found {len(validation_flags)} flags.")
+    
+    return {
+        "validation_flags": validation_flags,
+        "audit_log": [{
+            "action": "validation_run",
+            "flags_found": len(validation_flags)
+        }]
+    }
+
+
 def conflict_resolver_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Resolver: Cross-checks outputs and finalizes decisions.
@@ -143,9 +223,19 @@ def conflict_resolver_node(state: Dict[str, Any]) -> Dict[str, Any]:
     support_summary = state.get("support_summary", {})
     sentiment = state.get("sentiment_score", 0.0)
     merchant_locks = state.get("merchant_locks", {})
+    validation_flags = state.get("validation_flags", [])  # <--- GET FLAGS
     
     final_actions = []
     warnings = []
+    
+    # Create a map of validation failures for quick lookup
+    # Map: product_id -> [list of failure types]
+    flag_map = {}
+    for flag in validation_flags:
+        pid = flag.get("product_id")
+        if pid not in flag_map:
+            flag_map[pid] = []
+        flag_map[pid].append(flag)
     
     # --- NEW: CROSS-AGENT VERIFICATION (Hallucination Check) ---
     # 1. Identify products that the Catalog Agent flagged as "Critical"
@@ -169,6 +259,35 @@ def conflict_resolver_node(state: Dict[str, Any]) -> Dict[str, Any]:
         proposed_price = proposal["proposed_price"]
         current_price = proposal["current_price"]
         cost = proposal["cost"]
+        
+        # --- NEW LOGIC: Check Validation Flags ---
+        if product_id in flag_map:
+            flags = flag_map[product_id]
+            
+            # Critical Validation Failures (Hallucinations)
+            hallucinations = [f for f in flags if f["type"] in ["HALLUCINATION", "DATA_MISMATCH"]]
+            if hallucinations:
+                final_actions.append({
+                    **proposal,
+                    "final_price": current_price,
+                    "status": "BLOCKED",
+                    "note": f"Blocked: {hallucinations[0]['message']}"
+                })
+                warnings.append(f"Security Block {product_id}: Agent hallucinated data source.")
+                continue
+            
+            # Soft Validation Failures (Contradictions)
+            contradictions = [f for f in flags if f["type"] == "CONTRADICTION"]
+            if contradictions:
+                final_actions.append({
+                    **proposal,
+                    "final_price": current_price,
+                    "status": "BLOCKED",
+                    "note": f"Blocked: {contradictions[0]['message']}"
+                })
+                warnings.append(f"Logic Block {product_id}: Proposal contradicted sentiment signals.")
+                continue
+        # -----------------------------------------
         
         # 2. PRIORITY 1: MERCHANT LOCKS (Immutable Override)
         if product_id in merchant_locks:
@@ -221,17 +340,32 @@ def conflict_resolver_node(state: Dict[str, Any]) -> Dict[str, Any]:
             "status": "APPROVED"
         })
     
+    # --- RELIABILITY METRICS CALCULATION ---
+    total_ops = len(proposals)
+    approved_ops = len([a for a in final_actions if a["status"] == "APPROVED"])
+    blocked_ops = len([a for a in final_actions if a["status"] == "BLOCKED"])
+    hallucination_count = len([f for f in validation_flags if f["type"] == "HALLUCINATION"])
+    
+    metrics = {
+        "pricing_pass_rate": round((approved_ops / total_ops * 100), 1) if total_ops > 0 else 0.0,
+        "automated_block_rate": round((blocked_ops / total_ops * 100), 1) if total_ops > 0 else 0.0,
+        "hallucination_rate": round((hallucination_count / total_ops * 100), 1) if total_ops > 0 else 0.0,
+        "sentiment_score": sentiment
+    }
+    
     # Calculate Final Alert Level
     critical_issues_count = len([i for i in catalog_issues if i.get("type") == "critical"])
     alert_level = "RED" if critical_issues_count > 0 else "YELLOW" if warnings else "GREEN"
     
     print(f"✓ Finalized {len(final_actions)} pricing decisions")
+    print(f"✓ Metrics: Pass Rate {metrics['pricing_pass_rate']}%, Hallucinations {metrics['hallucination_rate']}%")
     print(f"✓ Alert Level: {alert_level}")
     
     # Generate final report
     final_report = {
         "status": "COMPLETED",
         "alert_level": alert_level,
+        "metrics": metrics,  # Added to report
         "summary": {
             "total_products": len(proposals),
             "approved_changes": len([a for a in final_actions if a["status"] == "APPROVED"]),
@@ -242,7 +376,13 @@ def conflict_resolver_node(state: Dict[str, Any]) -> Dict[str, Any]:
         "support_summary": support_summary,
         "pricing_actions": final_actions,
         "warnings": warnings,
-        "recommendations": generate_recommendations(state, final_actions, warnings)
+        "recommendations": generate_recommendations(state, final_actions, warnings),
+        "validation_flags": validation_flags,  # Added to report for frontend visibility
+        "merchant_locks": merchant_locks,  # Added for transparency
+        "schema_validation_passed": state.get("schema_validation_passed", True),  # Added for debugging
+        "retry_count": state.get("retry_count", 0),  # Added for debugging
+        "throttle_mode_active": state.get("throttle_mode_active", False),  # Added for status
+        "audit_log": state.get("audit_log", [])  # Added for full transparency
     }
     
     return {
@@ -250,7 +390,7 @@ def conflict_resolver_node(state: Dict[str, Any]) -> Dict[str, Any]:
         "audit_log": [{
             "action": "workflow_completed",
             "alert_level": alert_level,
-            "actions_count": len(final_actions)
+            "metrics": metrics
         }]
     }
 
