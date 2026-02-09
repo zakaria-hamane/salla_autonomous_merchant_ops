@@ -2,6 +2,13 @@
 Test script to run the LangGraph workflow locally.
 """
 import os
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import backend modules
+backend_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(backend_dir))
+
 from dotenv import load_dotenv
 from graph import app
 from data_loader import load_sample_data
@@ -32,6 +39,7 @@ def main():
         "normalized_catalog": [],
         "catalog_issues": [],
         "pricing_proposals": [],
+        "validation_flags": [],
         "support_summary": {},
         "sentiment_score": 0.0,
         "complaint_spike_detected": False,

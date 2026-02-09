@@ -6,6 +6,7 @@ from state import AgentState
 from nodes import (
     coordinator_node,
     throttler_node,
+    validator_node,
     conflict_resolver_node
 )
 from agents import catalog_agent, support_agent, pricing_agent
@@ -53,6 +54,7 @@ workflow.add_node("coordinator", coordinator_node)
 workflow.add_node("catalog_agent", catalog_agent)
 workflow.add_node("support_agent", support_agent)
 workflow.add_node("pricing_agent", pricing_agent)
+workflow.add_node("validator", validator_node)
 workflow.add_node("throttler", throttler_node)
 workflow.add_node("resolver", conflict_resolver_node)
 
@@ -73,8 +75,9 @@ workflow.add_conditional_edges(
     }
 )
 
-# Pricing flows to resolver
-workflow.add_edge("pricing_agent", "resolver")
+# Pricing flows to validator, then validator flows to resolver
+workflow.add_edge("pricing_agent", "validator")
+workflow.add_edge("validator", "resolver")
 
 # Both throttler and resolver end the workflow
 workflow.add_edge("throttler", END)
@@ -90,4 +93,4 @@ if __name__ == "__main__":
     print("1. Coordinator → Support Agent → Catalog Agent")
     print("2. Safety Gate checks for complaint spike")
     print("3a. If spike: → Throttler → END")
-    print("3b. If safe: → Pricing Agent → Resolver → END")
+    print("3b. If safe: → Pricing Agent → Validator → Resolver → END")
