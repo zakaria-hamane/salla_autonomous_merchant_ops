@@ -9,14 +9,24 @@ from typing import Tuple, List, Dict
 def load_sample_data() -> Tuple[List[Dict], List[Dict], List[Dict]]:
     """
     Load sample data from CSV files.
+    Prioritizes Salla dataset (data/salla_data/) over fallback data.
     Returns: (product_data, customer_messages, pricing_context)
     """
-    # Try backend/data first, then fall back to ../data (root data directory)
+    # Try to load from Salla dataset first
+    salla_data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "salla_data")
+    
+    # Fallback to backend/data or ../data
     data_dir = os.path.join(os.path.dirname(__file__), "data")
     if not os.path.exists(data_dir) or not os.listdir(data_dir):
         # Try parent directory's data folder
         data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
-        print(f"Using data directory: {data_dir}")
+    
+    # Prioritize Salla data if it exists
+    if os.path.exists(salla_data_dir):
+        data_dir = salla_data_dir
+        print(f"✓ Using Salla dataset: {data_dir}")
+    else:
+        print(f"⚠️  Salla dataset not found, using fallback: {data_dir}")
     
     # Load products
     try:
